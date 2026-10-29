@@ -30,7 +30,6 @@ export default function BottomNav() {
       label: 'Jual',
       to: '/jual',
       icon: PlusCircle,
-      isSpecial: true,
       isActive: pathname === '/jual' || pathname === '/create',
     },
     {
@@ -45,46 +44,17 @@ export default function BottomNav() {
   return (
     <nav
       aria-label="Navigasi bawah mobile"
-      className="fixed bottom-0 inset-x-0 z-40 block border-t border-slate-200 bg-white/95 backdrop-blur-md shadow-lg md:hidden"
+      className="fixed bottom-0 inset-x-0 z-40 block border-t border-slate-200 bg-white/95 backdrop-blur-md shadow-[0_-2px_10px_rgba(0,0,0,0.05)] md:hidden"
     >
-      <div className="mx-auto flex h-16 max-w-md items-center justify-around px-2">
+      <div className="mx-auto grid h-16 max-w-lg grid-cols-4 items-center px-1">
         {navItems.map((item) => {
           const Icon = item.icon
 
-          // Tombol khusus 'Jual Barang' di tengah
-          if (item.isSpecial) {
-            return (
-              <Link
-                key={item.label}
-                to={item.to}
-                className="group relative -top-3 flex flex-col items-center"
-              >
-                <div
-                  className={`flex h-12 w-12 items-center justify-center rounded-full shadow-md transition-all ${
-                    item.isActive
-                      ? 'bg-blue-800 text-white ring-4 ring-blue-100'
-                      : 'bg-blue-900 text-white hover:bg-blue-800'
-                  }`}
-                >
-                  <Icon className="h-6 w-6" />
-                </div>
-                <span
-                  className={`mt-1 text-[10px] font-bold ${
-                    item.isActive ? 'text-blue-900' : 'text-slate-600'
-                  }`}
-                >
-                  {item.label}
-                </span>
-              </Link>
-            )
-          }
-
-          // Tombol Navigasi Biasa
           return (
             <Link
               key={item.label}
               to={item.to}
-              className={`flex flex-1 flex-col items-center justify-center py-1 transition-colors ${
+              className={`flex flex-col items-center justify-center py-1 transition-colors ${
                 item.isActive ? 'text-blue-900' : 'text-slate-500 hover:text-slate-900'
               }`}
             >
@@ -92,8 +62,8 @@ export default function BottomNav() {
                 <div
                   className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold transition-all ${
                     item.isActive
-                      ? 'bg-blue-900 text-white ring-2 ring-blue-900/30'
-                      : 'bg-blue-100 text-blue-900'
+                      ? 'bg-blue-900 text-white ring-2 ring-blue-900/20'
+                      : 'bg-slate-200 text-slate-700'
                   }`}
                 >
                   {displayName.charAt(0).toUpperCase()}
@@ -101,12 +71,12 @@ export default function BottomNav() {
               ) : (
                 <Icon
                   className={`h-5 w-5 transition-transform ${
-                    item.isActive ? 'scale-110 stroke-[2.4]' : 'stroke-[1.8]'
+                    item.isActive ? 'scale-105 stroke-[2.4]' : 'stroke-[1.8]'
                   }`}
                 />
               )}
               <span
-                className={`mt-1 text-[10px] ${
+                className={`mt-1 text-[11px] leading-tight ${
                   item.isActive ? 'font-bold text-blue-900' : 'font-medium text-slate-500'
                 }`}
               >

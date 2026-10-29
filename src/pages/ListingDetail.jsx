@@ -35,6 +35,7 @@ export default function ListingDetail() {
   const [activeImageIndex, setActiveImageIndex] = useState(0)
   const [copied, setCopied] = useState(false)
   const [isSaved, setIsSaved] = useState(false)
+  const [isSavingBookmark, setIsSavingBookmark] = useState(false)
 
   /*
     ========================================================================
@@ -44,7 +45,6 @@ export default function ListingDetail() {
   useEffect(() => {
     setActiveImageIndex(0)
     setCopied(false)
-    setIsSaved(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
 
     async function fetchListingDetail() {
@@ -83,10 +83,31 @@ export default function ListingDetail() {
       }
     }
 
+    async function checkSavedStatus() {
+      if (!user || !id) {
+        setIsSaved(false)
+        return
+      }
+      try {
+        const { data } = await supabase
+          .from('saved_listings')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('listing_id', id)
+          .maybeSingle()
+
+        setIsSaved(!!data)
+      } catch (err) {
+        console.error('Error saat cek status simpan:', err)
+        setIsSaved(false)
+      }
+    }
+
     if (id) {
       fetchListingDetail()
+      checkSavedStatus()
     }
-  }, [id])
+  }, [id, user])
 
   // UI saat memuat data dari Supabase
   if (isLoading) {
@@ -230,6 +251,48 @@ export default function ListingDetail() {
       }
     } catch {
       // Fallback
+    }
+  }
+
+  // Handler Simpan / Batal Simpan Barang (Wishlist)
+  const handleToggleSave = async () => {
+    if (!isLoggedIn || !user) {
+      alert('Silakan login atau daftar terlebih dahulu untuk menyimpan barang ke wishlist Anda.')
+      navigate('/login', { state: { from: location } })
+      return
+    }
+
+    if (isSavingBookmark) return
+    setIsSavingBookmark(true)
+
+    try {
+      if (isSaved) {
+        // Hapus dari daftar simpanan
+        const { error } = await supabase
+          .from('saved_listings')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('listing_id', id)
+
+        if (error) throw error
+        setIsSaved(false)
+      } else {
+        // Simpan ke daftar simpanan
+        const { error } = await supabase
+          .from('saved_listings')
+          .insert({
+            user_id: user.id,
+            listing_id: id,
+          })
+
+        if (error) throw error
+        setIsSaved(true)
+      }
+    } catch (err) {
+      console.error('Gagal memperbarui status simpan:', err)
+      alert(`Gagal menyimpan barang: ${err.message || 'Terjadi kesalahan sistem.'}`)
+    } finally {
+      setIsSavingBookmark(false)
     }
   }
 
@@ -393,19 +456,27 @@ export default function ListingDetail() {
               {/* Tombol 1: Simpan (Wishlist / Bookmark) */}
               <button
                 type="button"
-                onClick={() => setIsSaved((prev) => !prev)}
+                onClick={handleToggleSave}
+                disabled={isSavingBookmark}
                 className={`flex items-center justify-center gap-1.5 rounded-lg border py-2.5 text-xs font-medium transition-colors ${
                   isSaved
-                    ? 'border-rose-200 bg-rose-50 text-rose-600'
+                    ? 'border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100'
                     : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                }`}
+                } disabled:opacity-60`}
+                title={isSaved ? 'Hapus dari simpanan' : 'Simpan barang ini'}
               >
                 <Heart
                   className={`h-4 w-4 transition-colors ${
                     isSaved ? 'fill-rose-500 text-rose-500' : 'text-slate-400'
                   }`}
                 />
-                <span>{isSaved ? 'Tersimpan' : 'Simpan'}</span>
+                <span>
+                  {isSavingBookmark
+                    ? 'Memproses...'
+                    : isSaved
+                    ? 'Tersimpan'
+                    : 'Simpan'}
+                </span>
               </button>
 
               {/* Tombol 2: Bagikan */}

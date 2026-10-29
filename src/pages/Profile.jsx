@@ -14,6 +14,8 @@ import {
   X,
   LogOut,
   Sparkles,
+  Heart,
+  Bookmark,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
@@ -29,9 +31,16 @@ export default function Profile() {
   const { user, profile, logout, refreshProfile } = useAuth()
   const navigate = useNavigate()
 
+  // State tab aktif ('my_listings' | 'saved_listings')
+  const [activeTab, setActiveTab] = useState('my_listings')
+
   // State daftar iklan milik mahasiswa yang sedang login
   const [myListings, setMyListings] = useState([])
   const [isLoadingListings, setIsLoadingListings] = useState(true)
+
+  // State daftar barang yang disimpan (Wishlist)
+  const [savedListings, setSavedListings] = useState([])
+  const [isLoadingSaved, setIsLoadingSaved] = useState(true)
 
   // State modal / form edit profil
   const [isEditingProfile, setIsEditingProfile] = useState(false)
@@ -85,7 +94,48 @@ export default function Profile() {
     fetchUserListings()
   }, [user])
 
-  // Handler Hapus Iklan
+  /*
+    ========================================================================
+    FETCH DAFTAR BARANG YANG DISIMPAN (WISHLIST)
+    ========================================================================
+  */
+  useEffect(() => {
+    async function fetchSavedListings() {
+      if (!user) return
+      setIsLoadingSaved(true)
+      try {
+        const { data, error } = await supabase
+          .from('saved_listings')
+          .select('id, listing_id, created_at, listings(*, profiles(full_name, whatsapp_number))')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+
+        if (error) {
+          console.error('Gagal mengambil barang disimpan:', error)
+          setSavedListings([])
+        } else {
+          // Filter out null listings (jika barang asli sudah terhapus)
+          const validSaved = (data || [])
+            .filter((item) => item.listings !== null)
+            .map((item) => ({
+              savedRelationId: item.id,
+              savedAt: item.created_at,
+              ...item.listings,
+            }))
+          setSavedListings(validSaved)
+        }
+      } catch (err) {
+        console.error('Error saat fetch saved listings:', err)
+        setSavedListings([])
+      } finally {
+        setIsLoadingSaved(false)
+      }
+    }
+
+    fetchSavedListings()
+  }, [user])
+
+  // Handler Hapus Iklan Milik Sendiri
   const handleDeleteListing = async (listingId, title) => {
     const konfirmasi = window.confirm(
       `Apakah Anda yakin ingin menghapus iklan "${title}"?\nTindakan ini permanen dan tidak dapat dibatalkan.`
@@ -108,6 +158,24 @@ export default function Profile() {
     } catch (err) {
       console.error('Gagal menghapus iklan:', err)
       alert(`Gagal menghapus iklan: ${err.message || 'Terjadi kesalahan sistem.'}`)
+    }
+  }
+
+  // Handler Hapus Barang dari Wishlist / Simpanan
+  const handleRemoveSaved = async (listingId, title) => {
+    try {
+      const { error } = await supabase
+        .from('saved_listings')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('listing_id', listingId)
+
+      if (error) throw error
+
+      setSavedListings((prev) => prev.filter((item) => item.id !== listingId))
+    } catch (err) {
+      console.error('Gagal menghapus barang dari simpanan:', err)
+      alert(`Gagal menghapus dari simpanan: ${err.message || 'Terjadi kesalahan sistem.'}`)
     }
   }
 
@@ -305,7 +373,15 @@ export default function Profile() {
 
           {/* KARTU STATISTIK PENJUAL */}
           <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 gap-4">
-            <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-4">
+            <button
+              type="button"
+              onClick={() => setActiveTab('my_listings')}
+              className={`text-left rounded-xl border p-4 transition-all ${
+                activeTab === 'my_listings'
+                  ? 'border-blue-900/40 bg-blue-50/60 ring-2 ring-blue-900/10'
+                  : 'border-slate-100 bg-slate-50/70 hover:bg-slate-100/60'
+              }`}
+            >
               <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
                 <Package className="h-4 w-4 text-blue-900" />
                 Iklan Aktif
@@ -313,7 +389,7 @@ export default function Profile() {
               <p className="mt-2 text-2xl font-bold text-slate-900">
                 {myListings.length}
               </p>
-            </div>
+            </button>
 
             <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-4">
               <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
@@ -325,139 +401,331 @@ export default function Profile() {
               </p>
             </div>
 
-            <div className="col-span-2 sm:col-span-1 rounded-xl border border-slate-100 bg-slate-50/70 p-4">
+            <button
+              type="button"
+              onClick={() => setActiveTab('saved_listings')}
+              className={`col-span-2 sm:col-span-1 text-left rounded-xl border p-4 transition-all ${
+                activeTab === 'saved_listings'
+                  ? 'border-rose-900/40 bg-rose-50/60 ring-2 ring-rose-900/10'
+                  : 'border-slate-100 bg-slate-50/70 hover:bg-slate-100/60'
+              }`}
+            >
               <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
-                <ShieldCheck className="h-4 w-4 text-sky-600" />
-                Status Penjual
+                <Heart className="h-4 w-4 text-rose-500" />
+                Barang Disimpan
               </span>
-              <p className="mt-2 text-sm font-bold text-slate-900">
-                Mahasiswa Polinus
+              <p className="mt-2 text-2xl font-bold text-rose-600">
+                {savedListings.length}
               </p>
-            </div>
+            </button>
           </div>
         </div>
 
-        {/* SECTION BARANG DAGANGAN SAYA */}
+        {/* TAB NAVIGATION: DAGANGAN SAYA & BARANG DISIMPAN */}
         <div className="mt-8">
-          <div className="flex items-center justify-between pb-4">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">
-                Barang Dagangan Saya
-              </h2>
-              <p className="text-xs text-slate-500">
-                Kelola dan edit barang preloved yang Anda tawarkan kepada sesama mahasiswa.
-              </p>
-            </div>
-
-            <Link
-              to="/jual"
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-900 hover:underline"
+          <div className="flex border-b border-slate-200 bg-white rounded-t-xl px-2">
+            <button
+              type="button"
+              onClick={() => setActiveTab('my_listings')}
+              className={`flex items-center gap-2 border-b-2 py-3.5 px-4 text-xs sm:text-sm font-semibold transition-colors ${
+                activeTab === 'my_listings'
+                  ? 'border-blue-900 text-blue-900'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
             >
-              <PlusCircle className="h-4 w-4" />
-              Tambah Iklan
-            </Link>
+              <Package className="h-4 w-4" />
+              <span>Dagangan Saya</span>
+              <span
+                className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                  activeTab === 'my_listings'
+                    ? 'bg-blue-100 text-blue-900'
+                    : 'bg-slate-100 text-slate-600'
+                }`}
+              >
+                {myListings.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('saved_listings')}
+              className={`flex items-center gap-2 border-b-2 py-3.5 px-4 text-xs sm:text-sm font-semibold transition-colors ${
+                activeTab === 'saved_listings'
+                  ? 'border-rose-500 text-rose-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Heart
+                className={`h-4 w-4 ${
+                  activeTab === 'saved_listings' ? 'fill-rose-500 text-rose-500' : ''
+                }`}
+              />
+              <span>Barang Disimpan</span>
+              <span
+                className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                  activeTab === 'saved_listings'
+                    ? 'bg-rose-100 text-rose-700'
+                    : 'bg-slate-100 text-slate-600'
+                }`}
+              >
+                {savedListings.length}
+              </span>
+            </button>
           </div>
 
-          {isLoadingListings ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-2">
-              <div className="h-7 w-7 animate-spin rounded-full border-2 border-blue-900 border-t-transparent" />
-              <p className="text-xs font-medium text-slate-500">Memuat barang dagangan Anda...</p>
-            </div>
-          ) : myListings.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {myListings.map((item) => {
-                const thumbnail =
-                  item.image_urls && item.image_urls.length > 0
-                    ? item.image_urls[0]
-                    : 'https://placehold.co/600x600/f1f5f9/475569?text=Polinus+Preloved'
+          {/* KONTEN TAB 1: BARANG DAGANGAN SAYA */}
+          {activeTab === 'my_listings' && (
+            <div className="rounded-b-xl border-x border-b border-slate-200 bg-white p-5 md:p-6 shadow-xs">
+              <div className="flex items-center justify-between pb-4">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">
+                    Daftar Barang yang Anda Jual
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Kelola dan perbarui iklan preloved yang Anda tawarkan ke sesama mahasiswa.
+                  </p>
+                </div>
 
-                return (
-                  <div
-                    key={item.id}
-                    className="flex flex-col justify-between overflow-hidden rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs transition hover:shadow-sm"
-                  >
-                    <div>
-                      {/* Gambar dan Badges */}
-                      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-lg bg-slate-100">
-                        <img
-                          src={thumbnail}
-                          alt={item.title}
-                          className="h-full w-full object-cover"
-                          onError={(e) => {
-                            e.currentTarget.src =
-                              'https://placehold.co/600x600/f1f5f9/475569?text=Polinus+Preloved'
-                          }}
-                        />
-                        <span className="absolute top-2 left-2 rounded-full bg-blue-900/80 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-xs">
-                          {item.category}
-                        </span>
-                      </div>
-
-                      {/* Detail Judul dan Harga */}
-                      <div className="mt-3">
-                        <h3 className="line-clamp-2 text-sm font-semibold text-slate-900">
-                          {item.title}
-                        </h3>
-                        <p className="mt-1 text-base font-bold text-blue-900">
-                          {formatRupiah(item.price)}
-                        </p>
-                        <p className="mt-1 text-[11px] text-slate-500">
-                          Kondisi: <span className="font-medium text-slate-700">{item.condition}</span>
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Tombol Aksi: Lihat, Edit, Hapus */}
-                    <div className="mt-4 flex items-center gap-2 border-t border-slate-100 pt-3">
-                      <Link
-                        to={`/listing/${item.id}`}
-                        className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-slate-200 bg-white py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
-                        title="Lihat Iklan"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5 text-slate-400" />
-                        Lihat
-                      </Link>
-
-                      <Link
-                        to={`/edit/${item.id}`}
-                        className="flex-1 inline-flex items-center justify-center gap-1 rounded-md bg-blue-900 py-1.5 text-xs font-semibold text-white hover:bg-blue-800 transition-colors"
-                        title="Edit Iklan"
-                      >
-                        <Edit3 className="h-3.5 w-3.5" />
-                        Edit
-                      </Link>
-
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteListing(item.id, item.title)}
-                        className="rounded-md border border-red-200 p-1.5 text-red-600 hover:bg-red-50 transition-colors"
-                        title="Hapus Iklan"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-900">
-                <Package className="h-6 w-6" />
+                <Link
+                  to="/jual"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-900 hover:underline"
+                >
+                  <PlusCircle className="h-4 w-4" />
+                  Tambah Iklan
+                </Link>
               </div>
-              <h3 className="mt-3 text-sm font-bold text-slate-900">
-                Anda Belum Memiliki Barang Dagangan
-              </h3>
-              <p className="mt-1 text-xs text-slate-500">
-                Punya buku, kipas angin, pakaian, atau barang preloved yang sudah tidak terpakai? Tawarkan sekarang ke sesama mahasiswa Polinus!
-              </p>
-              <Link
-                to="/jual"
-                className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-blue-900 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-800 shadow-xs"
-              >
-                <PlusCircle className="h-4 w-4" />
-                Mulai Pasang Iklan
-              </Link>
+
+              {isLoadingListings ? (
+                <div className="flex flex-col items-center justify-center py-16 gap-2">
+                  <div className="h-7 w-7 animate-spin rounded-full border-2 border-blue-900 border-t-transparent" />
+                  <p className="text-xs font-medium text-slate-500">
+                    Memuat barang dagangan Anda...
+                  </p>
+                </div>
+              ) : myListings.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {myListings.map((item) => {
+                    const thumbnail =
+                      item.image_urls && item.image_urls.length > 0
+                        ? item.image_urls[0]
+                        : 'https://placehold.co/600x600/f1f5f9/475569?text=Polinus+Preloved'
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex flex-col justify-between overflow-hidden rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs transition hover:shadow-sm"
+                      >
+                        <div>
+                          {/* Gambar dan Badges */}
+                          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-lg bg-slate-100">
+                            <img
+                              src={thumbnail}
+                              alt={item.title}
+                              className="h-full w-full object-cover"
+                              onError={(e) => {
+                                e.currentTarget.src =
+                                  'https://placehold.co/600x600/f1f5f9/475569?text=Polinus+Preloved'
+                              }}
+                            />
+                            <span className="absolute top-2 left-2 rounded-full bg-blue-900/80 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-xs">
+                              {item.category}
+                            </span>
+                          </div>
+
+                          {/* Detail Judul dan Harga */}
+                          <div className="mt-3">
+                            <h3 className="line-clamp-2 text-sm font-semibold text-slate-900">
+                              {item.title}
+                            </h3>
+                            <p className="mt-1 text-base font-bold text-blue-900">
+                              {formatRupiah(item.price)}
+                            </p>
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              Kondisi:{' '}
+                              <span className="font-medium text-slate-700">
+                                {item.condition}
+                              </span>
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Tombol Aksi: Lihat, Edit, Hapus */}
+                        <div className="mt-4 flex items-center gap-2 border-t border-slate-100 pt-3">
+                          <Link
+                            to={`/listing/${item.id}`}
+                            className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-slate-200 bg-white py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                            title="Lihat Iklan"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5 text-slate-400" />
+                            Lihat
+                          </Link>
+
+                          <Link
+                            to={`/edit/${item.id}`}
+                            className="flex-1 inline-flex items-center justify-center gap-1 rounded-md bg-blue-900 py-1.5 text-xs font-semibold text-white hover:bg-blue-800 transition-colors"
+                            title="Edit Iklan"
+                          >
+                            <Edit3 className="h-3.5 w-3.5" />
+                            Edit
+                          </Link>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteListing(item.id, item.title)}
+                            className="rounded-md border border-red-200 p-1.5 text-red-600 hover:bg-red-50 transition-colors"
+                            title="Hapus Iklan"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-900">
+                    <Package className="h-6 w-6" />
+                  </div>
+                  <h3 className="mt-3 text-sm font-bold text-slate-900">
+                    Anda Belum Memiliki Barang Dagangan
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Punya buku, pakaian, kipas angin, atau barang preloved yang tidak terpakai? Tawarkan sekarang ke sesama mahasiswa!
+                  </p>
+                  <Link
+                    to="/jual"
+                    className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-blue-900 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-800 shadow-xs"
+                  >
+                    <PlusCircle className="h-4 w-4" />
+                    Mulai Pasang Iklan
+                  </Link>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* KONTEN TAB 2: BARANG DISIMPAN (WISHLIST) */}
+          {activeTab === 'saved_listings' && (
+            <div className="rounded-b-xl border-x border-b border-slate-200 bg-white p-5 md:p-6 shadow-xs">
+              <div className="flex items-center justify-between pb-4">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">
+                    Barang yang Anda Simpan
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Daftar barang impian atau incaran yang Anda simpan untuk dibeli nanti.
+                  </p>
+                </div>
+
+                <Link
+                  to="/katalog"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-900 hover:underline"
+                >
+                  Jelajahi Katalog
+                </Link>
+              </div>
+
+              {isLoadingSaved ? (
+                <div className="flex flex-col items-center justify-center py-16 gap-2">
+                  <div className="h-7 w-7 animate-spin rounded-full border-2 border-rose-500 border-t-transparent" />
+                  <p className="text-xs font-medium text-slate-500">
+                    Memuat barang yang disimpan...
+                  </p>
+                </div>
+              ) : savedListings.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {savedListings.map((item) => {
+                    const thumbnail =
+                      item.image_urls && item.image_urls.length > 0
+                        ? item.image_urls[0]
+                        : 'https://placehold.co/600x600/f1f5f9/475569?text=Polinus+Preloved'
+
+                    const sellerName =
+                      item.profiles?.full_name || 'Mahasiswa Polinus'
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex flex-col justify-between overflow-hidden rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs transition hover:shadow-sm"
+                      >
+                        <div>
+                          {/* Gambar dan Badges */}
+                          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-lg bg-slate-100">
+                            <img
+                              src={thumbnail}
+                              alt={item.title}
+                              className="h-full w-full object-cover"
+                              onError={(e) => {
+                                e.currentTarget.src =
+                                  'https://placehold.co/600x600/f1f5f9/475569?text=Polinus+Preloved'
+                              }}
+                            />
+                            <span className="absolute top-2 left-2 rounded-full bg-blue-900/80 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-xs">
+                              {item.category}
+                            </span>
+                            <span className="absolute top-2 right-2 rounded-full bg-white/90 p-1 text-rose-500 shadow-xs">
+                              <Heart className="h-3.5 w-3.5 fill-rose-500" />
+                            </span>
+                          </div>
+
+                          {/* Detail Judul dan Harga */}
+                          <div className="mt-3">
+                            <h3 className="line-clamp-2 text-sm font-semibold text-slate-900">
+                              {item.title}
+                            </h3>
+                            <p className="mt-1 text-base font-bold text-blue-900">
+                              {formatRupiah(item.price)}
+                            </p>
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              Penjual: <span className="font-medium text-slate-700">{sellerName}</span>
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Tombol Aksi: Lihat Detail & Hapus dari Simpanan */}
+                        <div className="mt-4 flex items-center gap-2 border-t border-slate-100 pt-3">
+                          <Link
+                            to={`/listing/${item.id}`}
+                            className="flex-1 inline-flex items-center justify-center gap-1 rounded-md bg-blue-900 py-1.5 text-xs font-semibold text-white hover:bg-blue-800 transition-colors"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            Lihat Detail
+                          </Link>
+
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveSaved(item.id, item.title)}
+                            className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50/60 px-3 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-100 transition-colors"
+                            title="Hapus dari Simpanan"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Hapus
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-rose-50 text-rose-500">
+                    <Heart className="h-6 w-6" />
+                  </div>
+                  <h3 className="mt-3 text-sm font-bold text-slate-900">
+                    Belum Ada Barang yang Disimpan
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Bila menemukan barang yang Anda sukai di katalog, tekan tombol "Simpan" agar tersimpan di sini.
+                  </p>
+                  <Link
+                    to="/katalog"
+                    className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-blue-900 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-800 shadow-xs"
+                  >
+                    Jelajahi Katalog Sekarang
+                  </Link>
+                </div>
+              )}
             </div>
           )}
         </div>
