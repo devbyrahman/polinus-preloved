@@ -12,11 +12,10 @@ export default function Register() {
     ========================================================================
     Menampung seluruh data mahasiswa yang diperlukan:
     - Akun: email & password (akan masuk ke auth.users)
-    - Profil: fullName, nim, whatsapp (akan masuk ke public.profiles)
+    - Profil: fullName, whatsapp (akan masuk ke public.profiles)
   */
   const [formData, setFormData] = useState({
     fullName: '',
-    nim: '',
     whatsapp: '',
     email: '',
     password: '',
@@ -60,7 +59,6 @@ export default function Register() {
         options: {
           data: {
             full_name: formData.fullName.trim(),
-            nim: formData.nim.trim(),
             whatsapp_number: cleanWa,
           },
         },
@@ -76,7 +74,6 @@ export default function Register() {
           {
             id: authData.user.id,
             full_name: formData.fullName.trim(),
-            nim: formData.nim.trim(),
             whatsapp_number: cleanWa,
           },
         ])
@@ -146,24 +143,7 @@ export default function Register() {
             />
           </div>
 
-          {/* 2. NIM */}
-          <div>
-            <label htmlFor="nim" className="block text-xs font-semibold text-slate-700">
-              NIM (Nomor Induk Mahasiswa) <span className="text-red-500">*</span>
-            </label>
-            <input
-              id="nim"
-              name="nim"
-              type="text"
-              required
-              placeholder="Contoh: 202210045"
-              value={formData.nim}
-              onChange={handleChange}
-              className="mt-1.5 w-full rounded-md border border-slate-300 p-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-900"
-            />
-          </div>
-
-          {/* 3. Nomor WhatsApp */}
+          {/* 2. Nomor WhatsApp */}
           <div>
             <label htmlFor="whatsapp" className="block text-xs font-semibold text-slate-700">
               Nomor WhatsApp <span className="text-red-500">*</span>

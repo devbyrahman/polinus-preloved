@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useParams, useNavigate, useLocation } from 'react-router-dom'
-import { Share2, Flag, Check, ArrowLeft, Heart } from 'lucide-react'
+import { Share2, Flag, Check, ArrowLeft, Heart, Edit3, Trash2 } from 'lucide-react'
 import ProductCard from '../components/ProductCard'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -24,7 +24,7 @@ export default function ListingDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
-  const { isLoggedIn } = useAuth()
+  const { isLoggedIn, user } = useAuth()
 
   // State data barang & penjual dari Supabase
   const [listing, setListing] = useState(null)
@@ -53,7 +53,7 @@ export default function ListingDetail() {
         // Mengambil data barang sekaligus join relasi profiles penjual
         const { data, error } = await supabase
           .from('listings')
-          .select('*, profiles(full_name, whatsapp_number, nim)')
+          .select('*, profiles(full_name, whatsapp_number)')
           .eq('id', id)
           .single()
 
@@ -132,25 +132,35 @@ export default function ListingDetail() {
     image_urls = [],
   } = listing
 
-  // Ekstrak data profil penjual hasil join
-  const seller = Array.isArray(listing.profiles)
-    ? listing.profiles[0]
-    : listing.profiles || { full_name: 'Mahasiswa Polinus', whatsapp_number: '', nim: '-' }
+  // Ekstrak data profil penjual hasil join (bisa berupa objek atau array tergantung relasi)
+  const seller =
+    (Array.isArray(listing.profiles) ? listing.profiles[0] : listing.profiles) || {
+      full_name: 'Mahasiswa Polinus',
+      whatsapp_number: '',
+    }
 
-  // Standarisasi nomor WA penjual
-  let sellerWa = (seller.whatsapp_number || '').replace(/[^0-9]/g, '')
+  /*
+    Format nomor WhatsApp ke standar API wa.me (tanpa +, tanpa spasi/strip):
+    - "0812..."   -> "62812..."
+    - "+62812..." -> "62812..."
+    - "812..."    -> "62812..."
+    - "62812..."  -> tetap
+  */
+  let sellerWa = String(seller.whatsapp_number || '').replace(/[^0-9]/g, '')
   if (sellerWa.startsWith('0')) {
     sellerWa = '62' + sellerWa.slice(1)
+  } else if (sellerWa.startsWith('8')) {
+    sellerWa = '62' + sellerWa
   }
 
   // Pesan WhatsApp ke Penjual
   const waBuyerMessage = `Halo kak ${seller.full_name || 'Penjual'}, saya tertarik dengan barang "${title}" yang dijual di Polinus Preloved.`
   const waSellerLink = sellerWa
     ? `https://wa.me/${sellerWa}?text=${encodeURIComponent(waBuyerMessage)}`
-    : '#'
+    : ''
 
   // Pesan WhatsApp ke Admin untuk Laporkan Iklan
-  const waReportMessage = `Halo Admin Polinus Preloved, saya ingin melaporkan iklan ini karena mencurigakan / tidak sesuai aturan:\n\nID: ${id}\nJudul: ${title}\nPenjual: ${seller.full_name} (${seller.nim})`
+  const waReportMessage = `Halo Admin Polinus Preloved, saya ingin melaporkan iklan ini karena mencurigakan / tidak sesuai aturan:\n\nID: ${id}\nJudul: ${title}\nPenjual: ${seller.full_name}`
   const waReportLink = `https://wa.me/628000000000?text=${encodeURIComponent(waReportMessage)}`
 
   // Validasi foto galeri
@@ -168,17 +178,45 @@ export default function ListingDetail() {
     HANDLER CTA WHATSAPP DENGAN AUTH GUARD
     ========================================================================
   */
-  const handleContactSeller = (e) => {
+  const handleContactSeller = () => {
     if (!isLoggedIn) {
-      e.preventDefault()
       alert('Silakan login atau daftar terlebih dahulu untuk menghubungi penjual.')
       navigate('/login', { state: { from: location } })
       return
     }
 
-    if (!sellerWa) {
-      e.preventDefault()
-      alert('Penjual belum melengkapi nomor WhatsApp aktif.')
+    if (!waSellerLink) {
+      alert('Penjual belum mencantumkan nomor WhatsApp aktif.')
+      return
+    }
+
+    window.open(waSellerLink, '_blank', 'noopener,noreferrer')
+  }
+
+  // Cek apakah user yang sedang login adalah pemilik iklan ini
+  const isOwner = user && listing && user.id === listing.seller_id
+
+  // Handler Hapus Iklan oleh Pemilik
+  const handleDeleteListing = async () => {
+    const konfirmasi = window.confirm(
+      `Apakah Anda yakin ingin menghapus iklan "${title}"?\nTindakan ini tidak dapat dibatalkan.`
+    )
+    if (!konfirmasi) return
+
+    try {
+      const { error } = await supabase
+        .from('listings')
+        .delete()
+        .eq('id', id)
+        .eq('seller_id', user.id)
+
+      if (error) throw error
+
+      alert('Iklan berhasil dihapus.')
+      navigate('/profile')
+    } catch (err) {
+      console.error('Gagal menghapus iklan:', err)
+      alert(`Gagal menghapus iklan: ${err.message || 'Terjadi kesalahan sistem.'}`)
     }
   }
 
@@ -308,22 +346,47 @@ export default function ListingDetail() {
                 <p className="truncate font-semibold text-slate-900 text-sm">
                   {seller.full_name || 'Mahasiswa Polinus'}
                 </p>
-                <p className="text-xs text-slate-500">
-                  {seller.nim ? `NIM: ${seller.nim}` : 'Mahasiswa Aktif'}
-                </p>
               </div>
             </div>
 
-            {/* Tombol Utama: Hubungi Penjual via WhatsApp (Protected Action) */}
-            <a
-              href={waSellerLink}
-              onClick={handleContactSeller}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-4 block w-full rounded-lg bg-green-600 py-3.5 text-center text-sm font-semibold text-white shadow-xs transition-colors hover:bg-green-700"
-            >
-              Hubungi Penjual via WhatsApp
-            </a>
+            {/* Aksi Utama: Jika Pemilik Barang -> Tombol Edit & Hapus, Jika Pengunjung -> Chat WhatsApp */}
+            {isOwner ? (
+              <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50/70 p-4">
+                <div className="flex items-center gap-2 text-xs font-bold text-blue-900">
+                  <span className="flex h-2 w-2 rounded-full bg-blue-900 animate-pulse" />
+                  Ini adalah iklan milik Anda
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  Anda dapat memperbarui rincian atau menghapus iklan ini kapan saja.
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <Link
+                    to={`/edit/${id}`}
+                    className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-blue-900 py-3 text-center text-sm font-semibold text-white shadow-xs hover:bg-blue-800 transition-colors"
+                  >
+                    <Edit3 className="h-4 w-4" />
+                    Edit Iklan
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={handleDeleteListing}
+                    className="flex items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-white px-4 py-3 text-sm font-semibold text-red-600 hover:bg-red-50 transition-colors shadow-xs"
+                    title="Hapus Iklan Ini"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Hapus
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleContactSeller}
+                className="mt-4 block w-full rounded-lg bg-green-600 py-3.5 text-center text-sm font-semibold text-white shadow-xs transition-colors hover:bg-green-700"
+              >
+                Hubungi Penjual via WhatsApp
+              </button>
+            )}
 
             {/* Tombol Aksi Sekunder: Simpan, Bagikan, & Laporkan */}
             <div className="mt-3 grid grid-cols-3 gap-2">

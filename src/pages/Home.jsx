@@ -3,46 +3,61 @@ import { Link } from 'react-router-dom'
 import ListingSection from '../components/ListingSection'
 import { supabase } from '../lib/supabase'
 
-const stats = [
-  { value: '400+', label: 'Mahasiswa Terdaftar' },
-  { value: '90+', label: 'Barang Tersedia' },
-]
-
 export default function Home() {
   const [listings, setListings] = useState([])
   const [isLoading, setIsLoading] = useState(true)
 
+  // State statistik real-time dari Supabase
+  const [stats, setStats] = useState({
+    userCount: 0,
+    listingCount: 0,
+    isLoading: true,
+  })
+
   /*
     ========================================================================
-    FETCH REAL DATA DARI SUPABASE
+    FETCH REAL DATA & REAL STATS DARI SUPABASE
     ========================================================================
-    Mengambil 6 barang terbaru yang diurutkan berdasarkan `created_at` secara menurun.
   */
   useEffect(() => {
-    async function fetchNewestListings() {
+    async function fetchHomeData() {
       setIsLoading(true)
       try {
-        const { data, error } = await supabase
+        // 1. Ambil 6 barang terbaru
+        const { data: newestData, error: newestError } = await supabase
           .from('listings')
           .select('*')
           .order('created_at', { ascending: false })
           .limit(6)
 
-        if (error) {
-          console.error('Gagal mengambil koleksi terbaru:', error)
+        if (newestError) {
+          console.error('Gagal mengambil koleksi terbaru:', newestError)
           setListings([])
         } else {
-          setListings(data || [])
+          setListings(newestData || [])
         }
+
+        // 2. Ambil total real jumlah mahasiswa dan total barang tersedia
+        const [usersRes, listingsRes] = await Promise.all([
+          supabase.from('profiles').select('*', { count: 'exact', head: true }),
+          supabase.from('listings').select('*', { count: 'exact', head: true }),
+        ])
+
+        setStats({
+          userCount: usersRes.count ?? 0,
+          listingCount: listingsRes.count ?? 0,
+          isLoading: false,
+        })
       } catch (err) {
-        console.error('Error fetch listings:', err)
+        console.error('Error saat fetch data beranda:', err)
         setListings([])
+        setStats((prev) => ({ ...prev, isLoading: false }))
       } finally {
         setIsLoading(false)
       }
     }
 
-    fetchNewestListings()
+    fetchHomeData()
   }, [])
 
   return (
@@ -74,7 +89,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Kolom kanan: pola latar pudar + counter stats */}
+          {/* Kolom kanan: counter stats real-time dari database */}
           <div className="relative overflow-hidden rounded-xl border border-white/20 bg-blue-950">
             <img
               src="https://picsum.photos/seed/campus/800/500"
@@ -83,14 +98,31 @@ export default function Home() {
               className="absolute inset-0 h-full w-full object-cover opacity-10"
             />
             <div className="relative grid grid-cols-2 gap-4 p-8">
-              {stats.map((s) => (
-                <div key={s.label}>
-                  <p className="text-4xl font-bold text-white">{s.value}</p>
-                  <p className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-300">
-                    {s.label}
-                  </p>
-                </div>
-              ))}
+              <div>
+                <p className="text-4xl font-bold text-white">
+                  {stats.isLoading ? (
+                    <span className="inline-block h-9 w-12 animate-pulse rounded bg-blue-800/60" />
+                  ) : (
+                    stats.userCount
+                  )}
+                </p>
+                <p className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-300">
+                  Mahasiswa Terdaftar
+                </p>
+              </div>
+
+              <div>
+                <p className="text-4xl font-bold text-white">
+                  {stats.isLoading ? (
+                    <span className="inline-block h-9 w-12 animate-pulse rounded bg-blue-800/60" />
+                  ) : (
+                    stats.listingCount
+                  )}
+                </p>
+                <p className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-300">
+                  Barang Tersedia
+                </p>
+              </div>
             </div>
           </div>
         </div>

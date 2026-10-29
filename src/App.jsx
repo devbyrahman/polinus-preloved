@@ -8,6 +8,7 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import Profile from './pages/Profile'
 import CreateListing from './pages/CreateListing'
+import EditListing from './pages/EditListing'
 import ListingDetail from './pages/ListingDetail'
 
 export default function App() {
@@ -51,6 +52,14 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <Profile />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/edit/:id"
+              element={
+                <ProtectedRoute>
+                  <EditListing />
                 </ProtectedRoute>
               }
             />

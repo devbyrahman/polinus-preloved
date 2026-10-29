@@ -1,7 +1,9 @@
 import { useState, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { UploadCloud, Camera, X, ArrowLeft, Info, CheckCircle2 } from 'lucide-react'
+import { UploadCloud, X, ArrowLeft, Info } from 'lucide-react'
 import { categoryList } from '../data/categories'
+import { supabase } from '../lib/supabase'
+import { useAuth } from '../context/AuthContext'
 
 // Opsi kondisi barang sesuai kesepakatan desain
 const conditionOptions = [
@@ -15,16 +17,15 @@ const conditionOptions = [
 export default function CreateListing() {
   const navigate = useNavigate()
   const fileInputRef = useRef(null)
+  const { user } = useAuth()
 
   /*
     ========================================================================
     STATE MANAGEMENT FORM (TWO-WAY DATA BINDING)
     ========================================================================
     - Seluruh data input disimpan dalam satu objek state `formData`.
-    - Setiap input HTML membaca nilai dari `formData[name]` (value binding).
-    - Ketika user mengetik, event `onChange` memicu `handleInputChange` untuk
-      memperbarui key yang bersangkutan tanpa menghapus key lainnya (...prev).
-    - Untuk input bertipe checkbox, nilainya diambil dari `e.target.checked`.
+    - `imageFiles` menyimpan array objek File asli untuk diunggah ke Supabase Storage.
+    - `imagePreviews` menyimpan URL blob lokal sementara untuk pratinjau di layar.
   */
   const [formData, setFormData] = useState({
     title: '',
@@ -37,8 +38,8 @@ export default function CreateListing() {
     codLocation: '',
   })
 
-  // State untuk menyimpan daftar file foto dan URL preview sementaranya
-  const [images, setImages] = useState([])
+  const [imageFiles, setImageFiles] = useState([])
+  const [imagePreviews, setImagePreviews] = useState([])
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Handler umum untuk perubahan input teks, select, dan textarea
@@ -56,44 +57,54 @@ export default function CreateListing() {
     if (!files.length) return
 
     // Batasi akumulasi foto maksimal 5 foto
-    const remainingSlots = 5 - images.length
+    const remainingSlots = 5 - imageFiles.length
     if (remainingSlots <= 0) {
       alert('Maksimal 5 foto barang.')
       return
     }
 
-    const newFiles = files.slice(0, remainingSlots)
-    const newImages = newFiles.map((file) => ({
-      file,
-      previewUrl: URL.createObjectURL(file),
-    }))
+    const selectedFiles = files.slice(0, remainingSlots)
+    const selectedPreviews = selectedFiles.map((file) => URL.createObjectURL(file))
 
-    setImages((prev) => [...prev, ...newImages])
+    setImageFiles((prev) => [...prev, ...selectedFiles])
+    setImagePreviews((prev) => [...prev, ...selectedPreviews])
+
     // Reset file input agar bisa memilih file yang sama lagi jika perlu
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  // Handler menghapus foto dari preview
+  // Handler menghapus foto dari preview dan array file
   const handleRemoveImage = (indexToRemove) => {
-    setImages((prev) => {
-      // Bebaskan memori URL objek browser
-      URL.revokeObjectURL(prev[indexToRemove].previewUrl)
-      return prev.filter((_, idx) => idx !== indexToRemove)
-    })
+    URL.revokeObjectURL(imagePreviews[indexToRemove])
+    setImageFiles((prev) => prev.filter((_, idx) => idx !== indexToRemove))
+    setImagePreviews((prev) => prev.filter((_, idx) => idx !== indexToRemove))
   }
 
   /*
     ========================================================================
-    MOCK SUBMISSION HANDLER
+    REAL SUPABASE STORAGE UPLOAD & DATABASE INSERT
     ========================================================================
-    - `e.preventDefault()` mencegah reload halaman bawaan browser.
-    - Menyiapkan payload data lengkap yang nantinya siap dikirim ke Supabase.
-    - Menampilkan notifikasi simulasi dan mencetak hasil ke console.
+    1. Validasi sesi user dan kelengkapan foto barang.
+    2. Unggah setiap file foto ke bucket `product_images` dan ambil Public URL-nya.
+    3. Simpan data iklan beserta array URL foto ke tabel `listings`.
   */
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
 
-    // Validasi sederhana
+    // Validasi autentikasi user
+    if (!user) {
+      alert('Silakan login terlebih dahulu untuk memasang iklan.')
+      navigate('/login')
+      return
+    }
+
+    // Validasi minimal 1 foto dipilih
+    if (imageFiles.length === 0) {
+      alert('Mohon pilih minimal 1 foto barang.')
+      return
+    }
+
+    // Validasi input form
     if (!formData.title.trim()) {
       alert('Mohon isi judul barang.')
       return
@@ -109,21 +120,72 @@ export default function CreateListing() {
 
     setIsSubmitting(true)
 
-    const payload = {
-      ...formData,
-      price: Number(formData.price),
-      totalImages: images.length,
-      createdAt: new Date().toISOString(),
-    }
+    try {
+      // Step 1: Upload seluruh foto ke bucket 'product_images'
+      const uploadedImageUrls = []
 
-    console.log('=== DATA IKLAN BARU (MOCK SUBMISSION) ===', payload)
-    console.log('File gambar yang diunggah:', images.map((img) => img.file))
+      for (const file of imageFiles) {
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+        const filePath = `${user.id}/${Date.now()}-${safeName}`
 
-    setTimeout(() => {
+        const { error: uploadError } = await supabase.storage
+          .from('product_images')
+          .upload(filePath, file)
+
+        if (uploadError) {
+          throw uploadError
+        }
+
+        const { data: publicUrlData } = supabase.storage
+          .from('product_images')
+          .getPublicUrl(filePath)
+
+        if (publicUrlData?.publicUrl) {
+          uploadedImageUrls.push(publicUrlData.publicUrl)
+        }
+      }
+
+      // Pastikan data profil penjual sudah terdaftar di tabel 'profiles' (mencegah error foreign key)
+      await supabase.from('profiles').upsert(
+        {
+          id: user.id,
+          full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Mahasiswa Polinus',
+          nim: user.user_metadata?.nim || '-',
+          whatsapp_number: user.user_metadata?.whatsapp_number || '',
+        },
+        { onConflict: 'id', ignoreDuplicates: true }
+      )
+
+      // Step 2: Insert data iklan ke tabel 'listings'
+      const finalDescription =
+        formData.isCod && formData.codLocation.trim()
+          ? `${formData.description.trim()}\n\nLokasi COD: ${formData.codLocation.trim()}`
+          : formData.description.trim()
+
+      const { error: insertError } = await supabase.from('listings').insert({
+        seller_id: user.id,
+        title: formData.title.trim(),
+        description: finalDescription,
+        price: Number(formData.price),
+        category: formData.category,
+        condition: formData.condition,
+        is_negotiable: formData.isNegotiable,
+        is_cod: formData.isCod,
+        image_urls: uploadedImageUrls,
+      })
+
+      if (insertError) {
+        throw insertError
+      }
+
+      alert('Iklan berhasil ditayangkan!')
+      navigate('/')
+    } catch (error) {
+      console.error('Gagal menayangkan iklan:', error)
+      alert(`Gagal menayangkan iklan: ${error.message || 'Terjadi kesalahan saat menyimpan data.'}`)
+    } finally {
       setIsSubmitting(false)
-      alert('Iklan berhasil ditambahkan! (Mock)')
-      navigate('/katalog')
-    }, 600)
+    }
   }
 
   return (
@@ -185,15 +247,15 @@ export default function CreateListing() {
               </div>
 
               {/* Thumbnail Preview Foto yang Telah Dipilih */}
-              {images.length > 0 && (
+              {imagePreviews.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-3">
-                  {images.map((img, idx) => (
+                  {imagePreviews.map((previewUrl, idx) => (
                     <div
                       key={idx}
                       className="group relative h-20 w-20 overflow-hidden rounded-lg border border-slate-200 bg-slate-100"
                     >
                       <img
-                        src={img.previewUrl}
+                        src={previewUrl}
                         alt={`Preview ${idx + 1}`}
                         className="h-full w-full object-cover"
                       />
@@ -386,7 +448,7 @@ export default function CreateListing() {
               disabled={isSubmitting}
               className="mt-2 w-full rounded-lg bg-blue-900 py-3.5 text-center text-sm font-bold text-white shadow-xs transition-colors hover:bg-blue-800 disabled:opacity-50"
             >
-              {isSubmitting ? 'Menyimpan Iklan...' : 'Tayangkan Iklan'}
+              {isSubmitting ? 'Mengunggah Foto & Menyimpan Iklan...' : 'Tayangkan Iklan'}
             </button>
           </form>
         </div>
