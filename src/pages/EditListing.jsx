@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
-import { UploadCloud, X, ArrowLeft, Info, Trash2 } from 'lucide-react'
+import { UploadCloud, X, ArrowLeft, Info, Trash2, Sparkles } from 'lucide-react'
 import { categoryList } from '../data/categories'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { compressMultipleImages } from '../lib/imageOptimizer'
 
 const conditionOptions = [
   '100% Baru',
@@ -39,6 +40,9 @@ export default function EditListing() {
   // Foto baru yang dipilih dari perangkat
   const [newImageFiles, setNewImageFiles] = useState([])
   const [newImagePreviews, setNewImagePreviews] = useState([])
+  const [newImageMeta, setNewImageMeta] = useState([])
+  const [isOptimizingImages, setIsOptimizingImages] = useState(false)
+  const [optimizingProgress, setOptimizingProgress] = useState({ current: 0, total: 0 })
 
   /*
     ========================================================================
@@ -111,8 +115,8 @@ export default function EditListing() {
     }))
   }
 
-  // Tambah foto baru (maks total foto 5)
-  const handleImageChange = (e) => {
+  // Tambah foto baru (maks total foto 5) dengan kompresi otomatis WebP
+  const handleImageChange = async (e) => {
     const files = Array.from(e.target.files || [])
     if (!files.length) return
 
@@ -124,12 +128,37 @@ export default function EditListing() {
     }
 
     const selectedFiles = files.slice(0, remainingSlots)
-    const selectedPreviews = selectedFiles.map((file) => URL.createObjectURL(file))
 
-    setNewImageFiles((prev) => [...prev, ...selectedFiles])
-    setNewImagePreviews((prev) => [...prev, ...selectedPreviews])
+    setIsOptimizingImages(true)
+    setOptimizingProgress({ current: 1, total: selectedFiles.length })
 
-    if (fileInputRef.current) fileInputRef.current.value = ''
+    try {
+      const optimizedResults = await compressMultipleImages(
+        selectedFiles,
+        { maxWidth: 1200, maxHeight: 1200, quality: 0.82 },
+        (current, total) => setOptimizingProgress({ current, total })
+      )
+
+      const newlyFiles = optimizedResults.map((r) => r.file)
+      const newlyPreviews = optimizedResults.map((r) => r.previewUrl)
+      const newlyMeta = optimizedResults.map((r) => ({
+        originalFormatted: r.originalFormatted,
+        compressedFormatted: r.compressedFormatted,
+        reductionPercent: r.reductionPercent,
+      }))
+
+      setNewImageFiles((prev) => [...prev, ...newlyFiles])
+      setNewImagePreviews((prev) => [...prev, ...newlyPreviews])
+      setNewImageMeta((prev) => [...prev, ...newlyMeta])
+    } catch (err) {
+      console.error('Gagal mengompresi gambar baru:', err)
+      const fallbackPreviews = selectedFiles.map((file) => URL.createObjectURL(file))
+      setNewImageFiles((prev) => [...prev, ...selectedFiles])
+      setNewImagePreviews((prev) => [...prev, ...fallbackPreviews])
+    } finally {
+      setIsOptimizingImages(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
   }
 
   // Hapus foto lama yang sudah ada di Supabase
@@ -139,9 +168,12 @@ export default function EditListing() {
 
   // Hapus foto baru yang baru dipilih
   const handleRemoveNewImage = (idxToRemove) => {
-    URL.revokeObjectURL(newImagePreviews[idxToRemove])
+    if (newImagePreviews[idxToRemove]) {
+      URL.revokeObjectURL(newImagePreviews[idxToRemove])
+    }
     setNewImageFiles((prev) => prev.filter((_, idx) => idx !== idxToRemove))
     setNewImagePreviews((prev) => prev.filter((_, idx) => idx !== idxToRemove))
+    setNewImageMeta((prev) => prev.filter((_, idx) => idx !== idxToRemove))
   }
 
   /*
@@ -183,7 +215,11 @@ export default function EditListing() {
 
         const { error: uploadError } = await supabase.storage
           .from('product_images')
-          .upload(filePath, file)
+          .upload(filePath, file, {
+            contentType: file.type || 'image/webp',
+            cacheControl: '31536000',
+            upsert: false,
+          })
 
         if (uploadError) {
           throw uploadError
@@ -272,12 +308,28 @@ export default function EditListing() {
           <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-6">
             {/* 1. KELOLA FOTO BARANG */}
             <div>
-              <label className="block text-sm font-semibold text-slate-700">
-                Foto Barang <span className="text-red-500">*</span>
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="block text-sm font-semibold text-slate-700">
+                  Foto Barang <span className="text-red-500">*</span>
+                </label>
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                  <Sparkles className="h-3 w-3" />
+                  Auto Kompresi WebP
+                </span>
+              </div>
               <p className="mt-0.5 text-xs text-slate-400">
-                Maksimal total 5 foto. Klik tombol X untuk menghapus foto lama atau baru.
+                Maksimal total 5 foto. Foto baru dari kamera HP otomatis dioptimalkan ukurannya agar website tetap kencang.
               </p>
+
+              {/* Status Loading saat Kompresi Foto Baru */}
+              {isOptimizingImages && (
+                <div className="mt-3 flex items-center gap-2.5 rounded-lg border border-blue-200 bg-blue-50/80 p-3 text-xs text-blue-900 shadow-xs">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-900 border-t-transparent" />
+                  <span className="font-medium">
+                    Mengompresi foto {optimizingProgress.current} dari {optimizingProgress.total}... Mohon tunggu sebentar.
+                  </span>
+                </div>
+              )}
 
               {/* Grid Preview Gabungan (Foto Lama & Foto Baru) */}
               <div className="mt-3 flex flex-wrap gap-3">
@@ -309,36 +361,40 @@ export default function EditListing() {
                 ))}
 
                 {/* Foto Baru yang Baru Dipilih */}
-                {newImagePreviews.map((previewUrl, idx) => (
-                  <div
-                    key={`new-${idx}`}
-                    className="group relative h-20 w-20 overflow-hidden rounded-lg border-2 border-dashed border-blue-500 bg-blue-50"
-                  >
-                    <img
-                      src={previewUrl}
-                      alt={`Foto baru ${idx + 1}`}
-                      className="h-full w-full object-cover"
-                    />
-                    <span className="absolute bottom-0 inset-x-0 bg-blue-600/80 text-[8px] font-semibold text-white text-center py-0.5">
-                      Baru
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveNewImage(idx)}
-                      className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900/70 text-white transition-opacity hover:bg-red-600"
-                      title="Hapus Foto Baru"
+                {newImagePreviews.map((previewUrl, idx) => {
+                  const meta = newImageMeta[idx]
+                  return (
+                    <div
+                      key={`new-${idx}`}
+                      className="group relative h-20 w-20 overflow-hidden rounded-lg border-2 border-dashed border-blue-500 bg-blue-50"
                     >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                ))}
+                      <img
+                        src={previewUrl}
+                        alt={`Foto baru ${idx + 1}`}
+                        className="h-full w-full object-cover"
+                      />
+                      <span className="absolute bottom-0 inset-x-0 bg-blue-600/85 text-[8px] font-semibold text-white text-center py-0.5">
+                        {meta && meta.reductionPercent > 0 ? `-${meta.reductionPercent}%` : 'Baru'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveNewImage(idx)}
+                        className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900/70 text-white transition-opacity hover:bg-red-600"
+                        title="Hapus Foto Baru"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  )
+                })}
 
                 {/* Kotak Tambah Foto Jika Kurang dari 5 */}
                 {existingImages.length + newImageFiles.length < 5 && (
                   <button
                     type="button"
+                    disabled={isOptimizingImages}
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 text-slate-500 transition-colors hover:border-blue-900 hover:text-blue-900"
+                    className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 text-slate-500 transition-colors hover:border-blue-900 hover:text-blue-900 disabled:opacity-50"
                   >
                     <UploadCloud className="h-5 w-5" />
                     <span className="mt-1 text-[10px] font-medium">+ Tambah</span>
@@ -351,6 +407,7 @@ export default function EditListing() {
                 type="file"
                 multiple
                 accept="image/*"
+                disabled={isOptimizingImages}
                 onChange={handleImageChange}
                 className="hidden"
               />

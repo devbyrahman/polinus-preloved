@@ -12,6 +12,9 @@ const formatRupiah = (value) =>
     maximumFractionDigits: 0,
   }).format(value || 0)
 
+const FALLBACK_DETAIL_IMAGE =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='800' viewBox='0 0 800 800'%3E%3Crect width='800' height='800' fill='%23f1f5f9'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='24' font-weight='600' fill='%2394a3b8'%3EPolinus Preloved%3C/text%3E%3C/svg%3E"
+
 function Badge({ children }) {
   return (
     <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
@@ -188,7 +191,7 @@ export default function ListingDetail() {
   const images =
     Array.isArray(image_urls) && image_urls.length > 0
       ? image_urls
-      : ['https://placehold.co/800x800/f1f5f9/475569?text=Polinus+Preloved']
+      : [FALLBACK_DETAIL_IMAGE]
   const activeImage = images[activeImageIndex] || images[0]
 
   const hasCod = is_cod ?? isCod ?? (cod_preference === 'COD')
@@ -316,10 +319,11 @@ export default function ListingDetail() {
               <img
                 src={activeImage}
                 alt={title}
+                decoding="async"
+                fetchPriority="high"
                 className="h-full w-full object-cover transition-opacity duration-200"
                 onError={(e) => {
-                  e.currentTarget.src =
-                    'https://placehold.co/800x800/f1f5f9/475569?text=Polinus+Preloved'
+                  e.currentTarget.src = FALLBACK_DETAIL_IMAGE
                 }}
               />
             </div>
@@ -343,7 +347,12 @@ export default function ListingDetail() {
                       <img
                         src={url}
                         alt={`${title} foto ke-${idx + 1}`}
+                        loading="lazy"
+                        decoding="async"
                         className="h-full w-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.src = FALLBACK_DETAIL_IMAGE
+                        }}
                       />
                     </button>
                   )

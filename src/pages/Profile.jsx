@@ -27,6 +27,9 @@ const formatRupiah = (value) =>
     maximumFractionDigits: 0,
   }).format(value || 0)
 
+const FALLBACK_PROFILE_IMG =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='600' viewBox='0 0 600 600'%3E%3Crect width='600' height='600' fill='%23f1f5f9'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='20' font-weight='600' fill='%2394a3b8'%3EPolinus Preloved%3C/text%3E%3C/svg%3E"
+
 export default function Profile() {
   const { user, profile, logout, refreshProfile } = useAuth()
   const navigate = useNavigate()
@@ -508,7 +511,7 @@ export default function Profile() {
                     const thumbnail =
                       item.image_urls && item.image_urls.length > 0
                         ? item.image_urls[0]
-                        : 'https://placehold.co/600x600/f1f5f9/475569?text=Polinus+Preloved'
+                        : FALLBACK_PROFILE_IMG
 
                     return (
                       <div
@@ -521,10 +524,11 @@ export default function Profile() {
                             <img
                               src={thumbnail}
                               alt={item.title}
+                              loading="lazy"
+                              decoding="async"
                               className="h-full w-full object-cover"
                               onError={(e) => {
-                                e.currentTarget.src =
-                                  'https://placehold.co/600x600/f1f5f9/475569?text=Polinus+Preloved'
+                                e.currentTarget.src = FALLBACK_PROFILE_IMG
                               }}
                             />
                             <span className="absolute top-2 left-2 rounded-full bg-blue-900/80 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-xs">
@@ -639,7 +643,7 @@ export default function Profile() {
                     const thumbnail =
                       item.image_urls && item.image_urls.length > 0
                         ? item.image_urls[0]
-                        : 'https://placehold.co/600x600/f1f5f9/475569?text=Polinus+Preloved'
+                        : FALLBACK_PROFILE_IMG
 
                     const sellerName =
                       item.profiles?.full_name || 'Mahasiswa Polinus'
@@ -655,10 +659,11 @@ export default function Profile() {
                             <img
                               src={thumbnail}
                               alt={item.title}
+                              loading="lazy"
+                              decoding="async"
                               className="h-full w-full object-cover"
                               onError={(e) => {
-                                e.currentTarget.src =
-                                  'https://placehold.co/600x600/f1f5f9/475569?text=Polinus+Preloved'
+                                e.currentTarget.src = FALLBACK_PROFILE_IMG
                               }}
                             />
                             <span className="absolute top-2 left-2 rounded-full bg-blue-900/80 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-xs">

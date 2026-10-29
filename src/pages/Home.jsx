@@ -90,12 +90,15 @@ export default function Home() {
           </div>
 
           {/* Kolom kanan: counter stats real-time dari database */}
-          <div className="relative overflow-hidden rounded-xl border border-white/20 bg-blue-950">
-            <img
-              src="https://picsum.photos/seed/campus/800/500"
-              alt=""
+          <div className="relative overflow-hidden rounded-xl border border-white/20 bg-blue-950/90 shadow-md">
+            {/* Ambient pattern tanpa membebani jaringan eksternal */}
+            <div
               aria-hidden="true"
-              className="absolute inset-0 h-full w-full object-cover opacity-10"
+              className="pointer-events-none absolute -right-12 -top-12 h-44 w-44 rounded-full bg-sky-400/15 blur-2xl"
+            />
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute -bottom-12 -left-12 h-44 w-44 rounded-full bg-blue-400/15 blur-2xl"
             />
             <div className="relative grid grid-cols-2 gap-4 p-8">
               <div>

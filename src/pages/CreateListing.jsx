@@ -1,9 +1,10 @@
 import { useState, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { UploadCloud, X, ArrowLeft, Info } from 'lucide-react'
+import { UploadCloud, X, ArrowLeft, Info, Sparkles, CheckCircle2 } from 'lucide-react'
 import { categoryList } from '../data/categories'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { compressMultipleImages } from '../lib/imageOptimizer'
 
 // Opsi kondisi barang sesuai kesepakatan desain
 const conditionOptions = [
@@ -40,6 +41,9 @@ export default function CreateListing() {
 
   const [imageFiles, setImageFiles] = useState([])
   const [imagePreviews, setImagePreviews] = useState([])
+  const [imageMeta, setImageMeta] = useState([])
+  const [isOptimizingImages, setIsOptimizingImages] = useState(false)
+  const [optimizingProgress, setOptimizingProgress] = useState({ current: 0, total: 0 })
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Handler umum untuk perubahan input teks, select, dan textarea
@@ -51,8 +55,8 @@ export default function CreateListing() {
     }))
   }
 
-  // Handler pemilihan file foto (maksimal 5 foto)
-  const handleImageChange = (e) => {
+  // Handler pemilihan file foto (maksimal 5 foto) dengan kompresi otomatis WebP
+  const handleImageChange = async (e) => {
     const files = Array.from(e.target.files || [])
     if (!files.length) return
 
@@ -64,20 +68,50 @@ export default function CreateListing() {
     }
 
     const selectedFiles = files.slice(0, remainingSlots)
-    const selectedPreviews = selectedFiles.map((file) => URL.createObjectURL(file))
 
-    setImageFiles((prev) => [...prev, ...selectedFiles])
-    setImagePreviews((prev) => [...prev, ...selectedPreviews])
+    setIsOptimizingImages(true)
+    setOptimizingProgress({ current: 1, total: selectedFiles.length })
 
-    // Reset file input agar bisa memilih file yang sama lagi jika perlu
-    if (fileInputRef.current) fileInputRef.current.value = ''
+    try {
+      // Kompresi foto resolusi tinggi kamera HP ke format WebP proporsional (max 1200px)
+      const optimizedResults = await compressMultipleImages(
+        selectedFiles,
+        { maxWidth: 1200, maxHeight: 1200, quality: 0.82 },
+        (current, total) => setOptimizingProgress({ current, total })
+      )
+
+      const newFiles = optimizedResults.map((r) => r.file)
+      const newPreviews = optimizedResults.map((r) => r.previewUrl)
+      const newMeta = optimizedResults.map((r) => ({
+        originalFormatted: r.originalFormatted,
+        compressedFormatted: r.compressedFormatted,
+        reductionPercent: r.reductionPercent,
+      }))
+
+      setImageFiles((prev) => [...prev, ...newFiles])
+      setImagePreviews((prev) => [...prev, ...newPreviews])
+      setImageMeta((prev) => [...prev, ...newMeta])
+    } catch (err) {
+      console.error('Gagal mengompresi gambar:', err)
+      // Fallback aman: gunakan file asli jika terjadi kendala pada browser
+      const fallbackPreviews = selectedFiles.map((file) => URL.createObjectURL(file))
+      setImageFiles((prev) => [...prev, ...selectedFiles])
+      setImagePreviews((prev) => [...prev, ...fallbackPreviews])
+    } finally {
+      setIsOptimizingImages(false)
+      // Reset file input agar bisa memilih file yang sama lagi jika perlu
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
   }
 
   // Handler menghapus foto dari preview dan array file
   const handleRemoveImage = (indexToRemove) => {
-    URL.revokeObjectURL(imagePreviews[indexToRemove])
+    if (imagePreviews[indexToRemove]) {
+      URL.revokeObjectURL(imagePreviews[indexToRemove])
+    }
     setImageFiles((prev) => prev.filter((_, idx) => idx !== indexToRemove))
     setImagePreviews((prev) => prev.filter((_, idx) => idx !== indexToRemove))
+    setImageMeta((prev) => prev.filter((_, idx) => idx !== indexToRemove))
   }
 
   /*
@@ -130,7 +164,11 @@ export default function CreateListing() {
 
         const { error: uploadError } = await supabase.storage
           .from('product_images')
-          .upload(filePath, file)
+          .upload(filePath, file, {
+            contentType: file.type || 'image/webp',
+            cacheControl: '31536000',
+            upsert: false,
+          })
 
         if (uploadError) {
           throw uploadError
@@ -215,23 +253,36 @@ export default function CreateListing() {
           <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-6">
             {/* 1. UPLOAD FOTO BARANG */}
             <div>
-              <label className="block text-sm font-semibold text-slate-700">
-                Foto Barang <span className="text-red-500">*</span>
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="block text-sm font-semibold text-slate-700">
+                  Foto Barang <span className="text-red-500">*</span>
+                </label>
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                  <Sparkles className="h-3 w-3" />
+                  Auto Kompresi WebP
+                </span>
+              </div>
               <p className="mt-0.5 text-xs text-slate-400">
-                Format JPG/PNG, maksimal 5 foto. Foto pertama akan menjadi foto sampul utama.
+                Pilih foto langsung dari kamera HP atau galeri. Foto otomatis dioptimalkan agar website tetap ringan dan hemat kuota.
               </p>
 
               {/* Area Drag & Drop / Klik Upload */}
               <div
-                onClick={() => fileInputRef.current?.click()}
-                className="mt-3 flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50/50 p-8 text-center transition-colors hover:border-blue-900 hover:bg-slate-50"
+                onClick={() => {
+                  if (!isOptimizingImages) fileInputRef.current?.click()
+                }}
+                className={`mt-3 flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-7 text-center transition-colors ${
+                  isOptimizingImages
+                    ? 'border-blue-300 bg-blue-50/40 cursor-wait'
+                    : 'border-slate-300 bg-slate-50/50 hover:border-blue-900 hover:bg-slate-50'
+                }`}
               >
                 <input
                   ref={fileInputRef}
                   type="file"
                   multiple
                   accept="image/*"
+                  disabled={isOptimizingImages}
                   onChange={handleImageChange}
                   className="hidden"
                 />
@@ -239,44 +290,65 @@ export default function CreateListing() {
                   <UploadCloud className="h-6 w-6" />
                 </div>
                 <p className="mt-3 text-sm font-medium text-slate-800">
-                  Klik atau tarik foto ke sini (Maks 5 foto)
+                  Klik atau pilih foto dari kamera / galeri HP (Maks 5 foto)
                 </p>
                 <p className="mt-1 text-xs text-slate-400">
-                  Bisa pilih beberapa foto sekaligus
+                  Foto 2-5 MB dari HP otomatis diperkecil ke ~100 KB tanpa pecah
                 </p>
               </div>
 
-              {/* Thumbnail Preview Foto yang Telah Dipilih */}
+              {/* Status Loading saat Kompresi Sedang Berjalan */}
+              {isOptimizingImages && (
+                <div className="mt-3 flex items-center gap-2.5 rounded-lg border border-blue-200 bg-blue-50/80 p-3 text-xs text-blue-900 shadow-xs">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-900 border-t-transparent" />
+                  <span className="font-medium">
+                    Mengoptimalkan foto {optimizingProgress.current} dari {optimizingProgress.total}... Mohon tunggu sebentar.
+                  </span>
+                </div>
+              )}
+
+              {/* Thumbnail Preview Foto yang Telah Dioptimasi */}
               {imagePreviews.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-3">
-                  {imagePreviews.map((previewUrl, idx) => (
-                    <div
-                      key={idx}
-                      className="group relative h-20 w-20 overflow-hidden rounded-lg border border-slate-200 bg-slate-100"
-                    >
-                      <img
-                        src={previewUrl}
-                        alt={`Preview ${idx + 1}`}
-                        className="h-full w-full object-cover"
-                      />
-                      {idx === 0 && (
-                        <span className="absolute bottom-0 inset-x-0 bg-blue-900/80 text-[9px] font-semibold text-white text-center py-0.5">
-                          Sampul
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleRemoveImage(idx)
-                        }}
-                        className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900/70 text-white transition-opacity hover:bg-red-600"
-                        title="Hapus Foto"
+                  {imagePreviews.map((previewUrl, idx) => {
+                    const meta = imageMeta[idx]
+                    return (
+                      <div
+                        key={idx}
+                        className="group relative h-24 w-24 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 shadow-xs"
                       >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ))}
+                        <img
+                          src={previewUrl}
+                          alt={`Preview ${idx + 1}`}
+                          className="h-full w-full object-cover"
+                        />
+                        {idx === 0 && (
+                          <span className="absolute bottom-0 inset-x-0 bg-blue-900/85 text-[9px] font-semibold text-white text-center py-0.5">
+                            Sampul Utama
+                          </span>
+                        )}
+                        {meta && meta.reductionPercent > 0 && (
+                          <span
+                            className="absolute left-1 top-1 rounded bg-emerald-600/90 px-1 py-0.5 text-[9px] font-bold text-white shadow-xs backdrop-blur-xs"
+                            title={`Ukuran asli: ${meta.originalFormatted} → Dioptimasi: ${meta.compressedFormatted}`}
+                          >
+                            -{meta.reductionPercent}%
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleRemoveImage(idx)
+                          }}
+                          className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900/70 text-white transition-opacity hover:bg-red-600"
+                          title="Hapus Foto"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>
