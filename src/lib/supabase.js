@@ -77,3 +77,39 @@ export const supabase = createClient(
   }
 )
 
+/**
+ * Mengekstrak relative path file dari Supabase Storage Public URL
+ * Contoh:
+ * Input: "https://...supabase.co/storage/v1/object/public/product_images/USER_ID/179327...jpg"
+ * Output: "USER_ID/179327...jpg"
+ */
+export function getStoragePathFromUrl(url, bucketName = 'product_images') {
+  if (!url || typeof url !== 'string') return null
+  const marker = `/${bucketName}/`
+  const index = url.indexOf(marker)
+  if (index === -1) return null
+  const fullPath = url.slice(index + marker.length)
+  return decodeURIComponent(fullPath.split('?')[0])
+}
+
+/**
+ * Menghapus sekumpulan file dari Supabase Storage Bucket berdasarkan Public URL-nya.
+ * Mencegah file foto tertinggal sebagai sampah (orphaned files) saat iklan dihapus atau diedit.
+ */
+export async function deleteStorageFiles(urls, bucketName = 'product_images') {
+  if (!Array.isArray(urls) || urls.length === 0) return
+  const paths = urls
+    .map((url) => getStoragePathFromUrl(url, bucketName))
+    .filter(Boolean)
+
+  if (paths.length === 0) return
+
+  try {
+    const { error } = await supabase.storage.from(bucketName).remove(paths)
+    if (error) {
+      console.warn('Gagal menghapus file dari Supabase Storage:', error)
+    }
+  } catch (err) {
+    console.warn('Error saat pembersihan file Supabase Storage:', err)
+  }
+}

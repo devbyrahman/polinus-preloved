@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { UploadCloud, X, ArrowLeft, Info, Trash2, Sparkles } from 'lucide-react'
 import { categoryList } from '../data/categories'
-import { supabase } from '../lib/supabase'
+import { supabase, deleteStorageFiles } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { compressMultipleImages } from '../lib/imageOptimizer'
 
@@ -36,6 +36,7 @@ export default function EditListing() {
 
   // Foto yang sudah ada sebelumnya di Supabase Storage
   const [existingImages, setExistingImages] = useState([])
+  const [removedExistingImages, setRemovedExistingImages] = useState([])
 
   // Foto baru yang dipilih dari perangkat
   const [newImageFiles, setNewImageFiles] = useState([])
@@ -161,8 +162,12 @@ export default function EditListing() {
     }
   }
 
-  // Hapus foto lama yang sudah ada di Supabase
+  // Hapus foto lama yang sudah ada di Supabase (tandai untuk dihapus dari storage saat simpan)
   const handleRemoveExistingImage = (idxToRemove) => {
+    const removedUrl = existingImages[idxToRemove]
+    if (removedUrl) {
+      setRemovedExistingImages((prev) => [...prev, removedUrl])
+    }
     setExistingImages((prev) => prev.filter((_, idx) => idx !== idxToRemove))
   }
 
@@ -261,6 +266,11 @@ export default function EditListing() {
 
       if (updateError) {
         throw updateError
+      }
+
+      // 3. Bersihkan foto lama yang telah dihapus dari Supabase Storage
+      if (removedExistingImages.length > 0) {
+        await deleteStorageFiles(removedExistingImages)
       }
 
       alert('Iklan berhasil diperbarui!')

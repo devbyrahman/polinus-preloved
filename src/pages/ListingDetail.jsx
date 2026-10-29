@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link, useParams, useNavigate, useLocation } from 'react-router-dom'
 import { Share2, Flag, Check, ArrowLeft, Heart, Edit3, Trash2 } from 'lucide-react'
 import ProductCard from '../components/ProductCard'
-import { supabase } from '../lib/supabase'
+import { supabase, deleteStorageFiles } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 
 const formatRupiah = (value) =>
@@ -220,7 +220,7 @@ export default function ListingDetail() {
   // Cek apakah user yang sedang login adalah pemilik iklan ini
   const isOwner = user && listing && user.id === listing.seller_id
 
-  // Handler Hapus Iklan oleh Pemilik
+  // Handler Hapus Iklan oleh Pemilik (sekaligus menghapus file gambar di Supabase Storage)
   const handleDeleteListing = async () => {
     const konfirmasi = window.confirm(
       `Apakah Anda yakin ingin menghapus iklan "${title}"?\nTindakan ini tidak dapat dibatalkan.`
@@ -228,6 +228,12 @@ export default function ListingDetail() {
     if (!konfirmasi) return
 
     try {
+      // 1. Bersihkan file foto dari Supabase Storage
+      if (listing && Array.isArray(listing.image_urls) && listing.image_urls.length > 0) {
+        await deleteStorageFiles(listing.image_urls)
+      }
+
+      // 2. Hapus baris data di tabel database
       const { error } = await supabase
         .from('listings')
         .delete()
@@ -236,7 +242,7 @@ export default function ListingDetail() {
 
       if (error) throw error
 
-      alert('Iklan berhasil dihapus.')
+      alert('Iklan dan foto berhasil dihapus.')
       navigate('/profile')
     } catch (err) {
       console.error('Gagal menghapus iklan:', err)

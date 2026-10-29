@@ -18,7 +18,7 @@ import {
   Bookmark,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { supabase } from '../lib/supabase'
+import { supabase, deleteStorageFiles } from '../lib/supabase'
 
 const formatRupiah = (value) =>
   new Intl.NumberFormat('id-ID', {
@@ -138,7 +138,7 @@ export default function Profile() {
     fetchSavedListings()
   }, [user])
 
-  // Handler Hapus Iklan Milik Sendiri
+  // Handler Hapus Iklan Milik Sendiri (sekaligus menghapus file gambar di Supabase Storage)
   const handleDeleteListing = async (listingId, title) => {
     const konfirmasi = window.confirm(
       `Apakah Anda yakin ingin menghapus iklan "${title}"?\nTindakan ini permanen dan tidak dapat dibatalkan.`
@@ -146,6 +146,14 @@ export default function Profile() {
     if (!konfirmasi) return
 
     try {
+      const listingToDelete = myListings.find((item) => item.id === listingId)
+
+      // 1. Hapus file fisik foto dari Supabase Storage bucket agar tidak menjadi sampah
+      if (listingToDelete && Array.isArray(listingToDelete.image_urls) && listingToDelete.image_urls.length > 0) {
+        await deleteStorageFiles(listingToDelete.image_urls)
+      }
+
+      // 2. Hapus baris data iklan dari tabel database
       const { error } = await supabase
         .from('listings')
         .delete()
@@ -157,7 +165,7 @@ export default function Profile() {
       }
 
       setMyListings((prev) => prev.filter((item) => item.id !== listingId))
-      alert('Iklan berhasil dihapus.')
+      alert('Iklan dan file foto berhasil dihapus.')
     } catch (err) {
       console.error('Gagal menghapus iklan:', err)
       alert(`Gagal menghapus iklan: ${err.message || 'Terjadi kesalahan sistem.'}`)
