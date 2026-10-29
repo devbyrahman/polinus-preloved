@@ -1,5 +1,6 @@
 import { Routes, Route } from 'react-router-dom'
 import Navbar from './components/Navbar'
+import BottomNav from './components/BottomNav'
 import ProtectedRoute from './components/ProtectedRoute'
 import { AuthProvider } from './context/AuthContext'
 import Home from './pages/Home'
@@ -16,8 +17,8 @@ export default function App() {
     <AuthProvider>
       <div className="min-h-screen bg-slate-50 text-slate-900">
         <Navbar />
-        {/* Konten utama dinamis yang berganti sesuai rute URL */}
-        <main>
+        {/* Konten utama dinamis yang berganti sesuai rute URL, pb-20 pada mobile untuk ruang Bottom Navigation Bar */}
+        <main className="pb-20 md:pb-6">
           <Routes>
             {/* Rute Publik */}
             <Route path="/" element={<Home />} />
@@ -65,6 +66,8 @@ export default function App() {
             />
           </Routes>
         </main>
+        {/* Navigasi Bawah Modern Standar Marketplace Khusus Tampilan Layar HP */}
+        <BottomNav />
       </div>
     </AuthProvider>
   )

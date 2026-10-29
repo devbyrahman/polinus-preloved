@@ -168,53 +168,98 @@ export default function Navbar() {
           )}
         </div>
 
-        {/* Hamburger Menu Mobile */}
-        <button
-          type="button"
-          onClick={() => setMenuOpen((open) => !open)}
-          aria-label="Buka menu"
-          aria-expanded={menuOpen}
-          className="ml-auto rounded-md border border-slate-200 p-2 text-slate-700 md:hidden"
-        >
-          {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </button>
+        {/* AREA TOMBOL KANAN (MOBILE HEADER) */}
+        <div className="ml-auto flex items-center gap-2 md:hidden">
+          {isLoggedIn ? (
+            <Link
+              to="/profile"
+              onClick={closeMenu}
+              className="flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50/80 px-2.5 py-1 text-xs font-semibold text-blue-900"
+              title="Buka Profil & Dagangan Saya"
+            >
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-900 text-[10px] font-bold text-white">
+                {displayName.charAt(0).toUpperCase()}
+              </div>
+              <span className="max-w-[80px] truncate text-[11px]">{displayName}</span>
+            </Link>
+          ) : (
+            <Link
+              to="/login"
+              onClick={closeMenu}
+              className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Masuk
+            </Link>
+          )}
+
+          {/* Hamburger Menu Mobile */}
+          <button
+            type="button"
+            onClick={() => setMenuOpen((open) => !open)}
+            aria-label="Buka menu"
+            aria-expanded={menuOpen}
+            className="rounded-md border border-slate-200 p-2 text-slate-700 hover:bg-slate-50"
+          >
+            {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+        </div>
       </div>
 
-      {/* PANEL MENU MOBILE */}
+      {/* PANEL MENU MOBILE DRAWER */}
       {menuOpen && (
-        <div className="flex flex-col gap-3 border-t border-slate-200 p-4 md:hidden bg-white">
+        <div className="flex flex-col gap-3 border-t border-slate-200 p-4 md:hidden bg-white shadow-lg animate-in slide-in-from-top-2 duration-200">
           {SearchBox}
           {CategoryDropdown}
 
           {isLoggedIn ? (
-            <div className="flex flex-col gap-2 pt-2 border-t border-slate-100">
-              <div className="flex items-center gap-2.5 py-1">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-900">
-                  {displayName.charAt(0).toUpperCase()}
+            <div className="flex flex-col gap-2.5 pt-2 border-t border-slate-100">
+              {/* Kartu Profil yang Jelas & Bisa Diklik */}
+              <Link
+                to="/profile"
+                onClick={closeMenu}
+                className="flex items-center justify-between rounded-xl border border-blue-200 bg-blue-50/70 p-3 hover:bg-blue-100/70 transition-colors"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-900 text-sm font-bold text-white shadow-xs">
+                    {displayName.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-slate-900 truncate">{displayName}</p>
+                    <p className="text-[11px] text-slate-500 truncate">{user?.email}</p>
+                    <span className="mt-0.5 inline-block text-[11px] font-semibold text-blue-900">
+                      Buka Profil & Dagangan Saya →
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-900">{displayName}</p>
-                  <p className="text-[11px] text-slate-400">
-                    {profile?.nim ? `NIM: ${profile.nim}` : user?.email}
-                  </p>
-                </div>
-              </div>
+              </Link>
 
+              {/* Menu Profil Saya Eksplisit */}
+              <Link
+                to="/profile"
+                onClick={closeMenu}
+                className="flex items-center justify-center gap-2 rounded-lg border border-blue-900 bg-white py-2.5 text-xs font-semibold text-blue-900 hover:bg-blue-50"
+              >
+                <User className="h-4 w-4" />
+                Halaman Profil Penjual
+              </Link>
+
+              {/* Tombol Jual Barang */}
               <Link
                 to="/jual"
                 onClick={closeMenu}
-                className="flex items-center justify-center gap-1.5 rounded-md bg-blue-900 py-2.5 text-xs font-semibold text-white"
+                className="flex items-center justify-center gap-2 rounded-lg bg-blue-900 py-2.5 text-xs font-semibold text-white shadow-xs hover:bg-blue-800"
               >
                 <PlusCircle className="h-4 w-4" />
-                Jual Barang
+                Pasang Iklan Barang
               </Link>
 
+              {/* Tombol Logout */}
               <button
                 type="button"
                 onClick={handleLogout}
-                className="flex items-center justify-center gap-1.5 rounded-md border border-red-200 py-2 text-xs font-semibold text-red-600 hover:bg-red-50"
+                className="flex items-center justify-center gap-2 rounded-lg border border-red-200 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors"
               >
-                <LogOut className="h-3.5 w-3.5" />
+                <LogOut className="h-4 w-4" />
                 Keluar (Logout)
               </button>
             </div>
@@ -223,16 +268,16 @@ export default function Navbar() {
               <Link
                 to="/login"
                 onClick={closeMenu}
-                className="w-full rounded-md border border-slate-200 py-2 text-center text-xs font-medium text-slate-700 hover:bg-slate-50"
+                className="w-full rounded-md border border-slate-200 py-2.5 text-center text-xs font-medium text-slate-700 hover:bg-slate-50"
               >
-                Masuk
+                Masuk ke Akun
               </Link>
               <Link
                 to="/register"
                 onClick={closeMenu}
-                className="w-full rounded-md bg-blue-900 py-2 text-center text-xs font-semibold text-white"
+                className="w-full rounded-md bg-blue-900 py-2.5 text-center text-xs font-semibold text-white hover:bg-blue-800"
               >
-                Daftar
+                Daftar Akun Baru
               </Link>
             </div>
           )}
